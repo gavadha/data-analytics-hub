@@ -1,6 +1,6 @@
 # Data Analytics Hub
 
-> **Built in under 1 hour** using Claude Code and modern AI tooling — full-stack app, working AI search pipeline, SQLite database with realistic dummy data, 36 passing tests, and a production roadmap. See [Roadmap](#roadmap) for how this scales to production.
+> **Built in under 1 hour** using Claude Code and modern AI tooling — full-stack app, working AI search pipeline, Claude agent with tool use, SQLite database with realistic dummy data, 59 passing tests, and a production roadmap. See [Roadmap](#roadmap) for how this scales to production.
 
 ---
 
@@ -8,7 +8,7 @@ A centralized internal portal where employees across every department can browse
 
 An internal portal like this shifts the Data team from a reactive, service-based model to a proactive, product-based one. It builds brand value for the Data team, reduces the cost of data access for the whole organization, and creates a natural on-ramp for AI adoption across every function.
 
-Built with Next.js, Claude AI (Text-to-SQL), and SQLite.
+Built with Next.js, Claude AI (Text-to-SQL + Agents), and SQLite.
 
 ---
 
@@ -27,7 +27,7 @@ This project exists to show what I can design, architect, and ship quickly using
 **Home — AI search, department browser, metrics, recent answers**
 ![Data Analytics Hub home page](public/screenshot.png)
 
-**Department drill-down — browse all Looker dashboards for a team**
+**Department drill-down — Weekly Digest agent + Looker dashboard list**
 ![Department dashboard list](public/screenshot-department.png)
 
 ---
@@ -35,10 +35,11 @@ This project exists to show what I can design, architect, and ship quickly using
 ## Features
 
 - **AI Search** — Ask questions in plain English. Claude generates SQL, runs it against the database, and returns a natural language answer.
+- **Weekly Digest Agent** — On any department page, trigger a Claude agent that autonomously calls multiple data tools, reasons across the results, and streams a synthesized weekly summary live to the UI.
 - **Department Dashboards** — Browse Looker dashboards organized by department: Legal, Customer Support, Office of Chief of Staff, Product, Platform, and Data.
 - **Metrics Definitions** — A single source of truth for how key metrics are defined and where they come from.
 - **Recent Answers Feed** — See what others have asked and discovered.
-- **SQL Injection Guard** — Only `SELECT` queries are ever executed.
+- **SQL Injection Guard** — Only `SELECT` queries are ever executed against the database.
 
 ---
 
@@ -116,26 +117,35 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```
 src/
 ├── app/
-│   ├── page.tsx                  # Home page (hero, departments, metrics, recent answers)
-│   ├── department/[slug]/        # Department drill-down with Looker dashboard list
-│   ├── metrics/                  # Full metrics definitions page
-│   └── api/genie/route.ts        # AI search API (Claude + SQLite Text-to-SQL)
+│   ├── page.tsx                      # Home page (hero, departments, metrics, recent answers)
+│   ├── department/[slug]/            # Department drill-down with digest agent + dashboard list
+│   ├── metrics/                      # Full metrics definitions page
+│   └── api/
+│       ├── genie/route.ts            # AI search — Claude Text-to-SQL pipeline
+│       └── agent/digest/route.ts     # Weekly Digest agent — agentic loop + SSE streaming
 ├── components/
 │   ├── Navbar.tsx
-│   ├── HeroSearch.tsx            # AI search bar
+│   ├── HeroSearch.tsx                # AI search bar with answer display
 │   ├── DepartmentCard.tsx
+│   ├── WeeklyDigest.tsx              # Agent UI — streaming digest with live typing effect
 │   ├── MetricsSection.tsx
 │   ├── RecentAnswers.tsx
 │   └── Footer.tsx
 ├── lib/
-│   ├── db.ts                     # SQLite connection + schema
-│   ├── mockData.ts               # Static mock data (departments, metrics, recent answers)
-│   └── sqlGuard.ts               # SELECT-only query safety check
-└── __tests__/                    # Jest test suites
+│   ├── db.ts                         # SQLite connection + schema definition
+│   ├── agentTools.ts                 # Agent tool functions + AGENT_TOOLS definitions
+│   ├── mockData.ts                   # Static mock data (departments, metrics, recent answers)
+│   └── sqlGuard.ts                   # SELECT-only query safety check
+└── __tests__/
+    ├── api/genie.test.ts             # Genie route tests (input validation, SQL guard)
+    ├── api/digest.test.ts            # Digest agent route tests (streaming, SSE format)
+    ├── lib/agentTools.test.ts        # Tool function unit tests
+    ├── components/DepartmentCard.test.tsx
+    └── components/MetricsSection.test.tsx
 scripts/
-└── seed.ts                       # Database seed script
+└── seed.ts                           # Seeds SQLite with 7,400+ rows of realistic dummy data
 data/
-└── analytics.db                  # SQLite database (generated by db:seed, gitignored)
+└── analytics.db                      # SQLite database (generated by db:seed, gitignored)
 ```
 
 ---
@@ -148,7 +158,7 @@ data/
 | `npm run build` | Build for production |
 | `npm run start` | Start production server |
 | `npm run db:seed` | Seed the SQLite database with dummy data |
-| `npm run test` | Run all 36 tests |
+| `npm run test` | Run all 59 tests |
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run test:coverage` | Run tests with coverage report |
 
@@ -170,6 +180,47 @@ data/
 - *"Which pipelines failed in the last 7 days?"*
 - *"What is the average gift size?"*
 - *"How many OKRs are at risk this quarter?"*
+
+---
+
+## How the Weekly Digest Agent Works
+
+The Weekly Digest is a Claude agent with tool use — not a single prompt, but an autonomous loop that decides what data to collect, collects it, and synthesizes it.
+
+**Agentic loop:**
+
+```
+User clicks "Generate Digest" on a department page
+  → POST /api/agent/digest { department, slug }
+  → Claude receives 4 tool definitions and the task
+  → Claude decides which tools to call and calls them:
+      query_payments_summary(days=7)    → total donations, refund rate, avg gift
+      query_tickets_summary(days=7)     → volume, CSAT, resolution time, escalations
+      query_pipelines_summary(days=7)   → success rate, failed pipeline names
+      query_okrs_by_department("Data")  → on-track / at-risk / off-track counts
+  → Tool results are returned to Claude
+  → Claude synthesizes across all results into a structured digest
+  → Response streams back to the UI word-by-word via Server-Sent Events
+```
+
+**Why this is an agent and not just a prompt:**
+Claude autonomously decides which tools are relevant for the department, calls them in parallel or sequence, and reasons across the combined results. It is not told what data to fetch — it decides. The agentic loop continues until Claude stops requesting tools (`stop_reason: end_turn`).
+
+**Digest format:**
+```
+Headline: One sentence — the most important thing this week.
+
+Key Numbers
+· Pipeline success rate: 99.2% (6 runs, 0 failures)
+· OKRs on track: 3 of 4
+
+⚠️ Watch Out
+· donations_daily_agg failed 3 times — downstream dashboards may be stale
+
+✓ Looking Good
+· All critical pipelines recovered within 2 hours
+· Data quality OKR at 92% progress
+```
 
 ---
 
@@ -401,4 +452,6 @@ The test suite covers:
 
 - **Mock data integrity** — all 6 departments, 39 dashboards, 10 metrics have required fields and consistent counts
 - **Genie API** — input validation, response shape, SQL injection guard, SELECT-only enforcement
+- **Digest agent route** — input validation, SSE streaming format, status/text/done event sequence
+- **Agent tools** — each tool function returns correct shape, `executeTool` routes correctly, unknown tools throw, all 6 department slugs are mapped
 - **Components** — DepartmentCard and MetricsSection render correctly with real data
