@@ -1,10 +1,22 @@
 # Data Analytics Hub
 
+> **Built in under 1 hour** using Claude Code and modern AI tooling — full-stack app, working AI search pipeline, SQLite database with realistic dummy data, 36 passing tests, and a production roadmap. See [Roadmap](#roadmap) for how this scales to production.
+
+---
+
 A centralized internal portal where employees across every department can browse their existing dashboards, discover data, and get answers to data questions in plain English — no SQL, no tickets, no waiting.
 
 An internal portal like this shifts the Data team from a reactive, service-based model to a proactive, product-based one. It builds brand value for the Data team, reduces the cost of data access for the whole organization, and creates a natural on-ramp for AI adoption across every function.
 
 Built with Next.js, Claude AI (Text-to-SQL), and SQLite.
+
+---
+
+## About This Project
+
+My production work lives behind GDPR, HIPAA, and internal data compliance agreements — real schemas, real donor and patient data, real pipelines — none of which can be shared in a public repository.
+
+This project exists to show what I can design, architect, and ship quickly using modern AI tooling, and how I think about taking a prototype to a production-grade internal product. The [Roadmap](#roadmap) section reflects real decisions I would make on the path from demo to enterprise deployment.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss) ![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
 
