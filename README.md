@@ -18,7 +18,7 @@ My production work lives behind GDPR, HIPAA, and internal data compliance agreem
 
 This project exists to show what I can design, architect, and ship quickly using modern AI tooling, and how I think about taking a prototype to a production-grade internal product. The [Roadmap](#roadmap) section reflects real decisions I would make on the path from demo to enterprise deployment.
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss) ![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss) ![Tests](https://img.shields.io/badge/tests-59%20passing-brightgreen)
 
 ---
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink, Calendar, User } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import WeeklyDigest from "@/components/WeeklyDigest";
 import { departments, dashboardsByDepartment } from "@/lib/mockData";
 
 interface PageProps {
@@ -42,6 +43,8 @@ export default async function DepartmentPage({ params }: PageProps) {
             {department.dashboardCount} dashboards available
           </p>
         </div>
+
+        <WeeklyDigest department={department.name} slug={slug} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {dashboards.map((dash) => (
