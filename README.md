@@ -1,8 +1,10 @@
 # Data Analytics Hub
 
-An AI-powered internal analytics portal that lets anyone ask data questions in plain English — no SQL, no tickets, no waiting.
+A centralized internal portal where employees across every department can browse their existing dashboards, discover data, and get answers to data questions in plain English — no SQL, no tickets, no waiting.
 
-Built with Next.js, Claude AI (Text-to-SQL), and SQLite. Inspired by the ActBlue Analytics Hub concept.
+An internal portal like this shifts the Data team from a reactive, service-based model to a proactive, product-based one. It builds brand value for the Data team, reduces the cost of data access for the whole organization, and creates a natural on-ramp for AI adoption across every function.
+
+Built with Next.js, Claude AI (Text-to-SQL), and SQLite.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript) ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss) ![Tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
 
@@ -189,8 +191,3 @@ The test suite covers:
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | Your Anthropic API key for Claude |
 
----
-
-## License
-
-MIT
