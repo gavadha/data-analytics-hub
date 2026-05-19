@@ -224,10 +224,103 @@ The "Recent answers" feed is currently static mock data. In production it should
 
 ### 6. CI/CD Pipeline
 
-- Add a **GitHub Actions** workflow that runs `npm run test` and `npm run build` on every pull request
-- Block merges if tests fail or the build breaks
-- On merge to `main`, auto-deploy to Vercel or AWS Amplify
-- Store secrets (`ANTHROPIC_API_KEY`, database credentials, Okta client secret) in **AWS Secrets Manager** or Vercel's encrypted environment variables — never in the repo
+**GitHub Actions workflows:**
+
+- `ci.yml` — runs on every pull request: `npm run test` + `npm run build`. Blocks merge if either fails.
+- `deploy.yml` — runs on merge to `main`: builds Docker image → pushes to Amazon ECR → triggers a rolling deploy to EKS.
+- `lint.yml` — runs ESLint and TypeScript type-check on every push to catch issues before tests run.
+
+**Docker:**
+
+Containerize the Next.js app with a multi-stage `Dockerfile` — a `builder` stage that compiles the app and a lean `runner` stage based on `node:20-alpine` that ships only what's needed. Image size targets under 200MB.
+
+```
+docker build -t data-analytics-hub .
+docker run -p 3000:3000 --env-file .env.local data-analytics-hub
+```
+
+**Amazon ECR:**
+
+Push versioned images to a private ECR repository on every deploy. Tag images with the Git SHA for traceability (`gavadha/data-analytics-hub:abc1234`). Retain the last 10 images; older ones are expired automatically via an ECR lifecycle policy.
+
+**Secrets:**
+
+All secrets (`ANTHROPIC_API_KEY`, `DATABASE_URL`, Okta credentials, Databricks token) live in **AWS Secrets Manager**. GitHub Actions pulls them at deploy time using OIDC — no long-lived AWS access keys ever stored in GitHub.
+
+### 7. Infrastructure as Code (Terraform + EKS)
+
+All AWS infrastructure is defined in Terraform and version-controlled alongside the application code. No resources are created by hand.
+
+**Terraform resource graph:**
+
+```
+VPC (private subnets across 3 AZs)
+├── EKS Cluster
+│   ├── Node Group (t3.medium, auto-scaling 2–6 nodes)
+│   ├── ALB Ingress Controller
+│   └── External Secrets Operator (syncs from Secrets Manager)
+├── RDS PostgreSQL (Multi-AZ, automated backups)
+├── ElastiCache Redis (session caching, rate limiting)
+├── ECR Repository
+├── Secrets Manager (all credentials)
+├── CloudFront Distribution (CDN for static assets)
+├── WAF (rate limiting, IP reputation, OWASP rules)
+├── Route 53 (internal DNS: analytics.company.com)
+└── CloudWatch (logs, dashboards, alarms)
+```
+
+**Terraform layout:**
+
+```
+terraform/
+├── main.tf
+├── variables.tf
+├── outputs.tf
+├── modules/
+│   ├── vpc/
+│   ├── eks/
+│   ├── rds/
+│   ├── redis/
+│   └── cdn/
+└── environments/
+    ├── staging/
+    └── production/
+```
+
+Separate state files per environment stored in an S3 backend with DynamoDB locking.
+
+**Kubernetes manifests (or Helm chart):**
+
+```
+k8s/
+├── deployment.yaml       # 3 replicas, rolling update strategy
+├── service.yaml          # ClusterIP service
+├── ingress.yaml          # ALB ingress with TLS termination
+├── hpa.yaml              # Horizontal Pod Autoscaler (CPU/RPS based)
+├── configmap.yaml        # Non-secret app config
+└── externalsecret.yaml   # Pulls secrets from AWS Secrets Manager at runtime
+```
+
+**EKS vs EC2 trade-offs:**
+
+| | EKS | EC2 (standalone) |
+|---|---|---|
+| Ops overhead | Low — AWS manages control plane | High — manage OS, updates, HA yourself |
+| Scaling | Auto via HPA + Cluster Autoscaler | Manual or via ASG |
+| Cost | ~$73/mo for control plane + nodes | Cheaper at small scale |
+| Best for | Teams already using Kubernetes | Simple single-instance deployments |
+
+For an internal tool with moderate traffic, **EKS with 2–3 `t3.medium` nodes** is the right call — it gives you zero-downtime deploys, horizontal scaling, and a clear path for future services (Looker sync worker, Genie proxy) without re-architecting.
+
+**Staging → Production promotion:**
+
+```
+PR opened  →  CI runs (test + build)
+PR merged  →  Deploy to staging (EKS staging namespace)
+             Smoke tests run against staging
+             Manual approval gate in GitHub Actions
+             →  Deploy to production (EKS prod namespace)
+```
 
 ### 7. Observability and Monitoring
 
@@ -255,23 +348,30 @@ The "Recent answers" feed is currently static mock data. In production it should
 
 > **Note:** Replace SQLite with Neon or Supabase before going to production — SQLite does not persist across Vercel serverless invocations.
 
-### AWS (recommended for production)
+### AWS — Production Architecture (EKS + Terraform)
 
 | Service | Purpose |
 |---|---|
-| **AWS Amplify** | Hosts the Next.js app with SSR support, auto-deploys from GitHub |
-| **AWS RDS (Postgres)** | Production database — replaces SQLite |
-| **AWS Secrets Manager** | Stores API keys and DB credentials securely |
-| **AWS CloudFront** | CDN in front of Amplify for static assets and edge caching |
-| **AWS CloudWatch** | Logs and alerting for API errors and latency |
-| **AWS WAF** | Web application firewall to block malicious traffic |
+| **EKS** | Runs the containerized Next.js app — 3 replicas, rolling deploys, horizontal autoscaling |
+| **ECR** | Private Docker image registry — images tagged by Git SHA |
+| **RDS PostgreSQL (Multi-AZ)** | Production database — replaces SQLite, automated backups, failover |
+| **ElastiCache (Redis)** | Session store and per-user rate limiting for the Genie API |
+| **Secrets Manager** | All credentials — never in environment files or source control |
+| **CloudFront** | CDN for static assets, edge caching, reduces latency globally |
+| **ALB + WAF** | Load balancer with TLS termination; WAF blocks OWASP top 10 and bad IPs |
+| **Route 53** | Internal DNS — maps `analytics.company.com` to the ALB |
+| **CloudWatch** | Structured logs, dashboards, alarms on error rate and Genie latency |
+| **Terraform** | All of the above defined as code — reproducible, version-controlled, peer-reviewed |
 
-**Setup steps for AWS:**
-1. Create an Amplify app and connect to this GitHub repo
-2. Amplify auto-detects Next.js — no Dockerfile needed
-3. Provision an RDS Postgres instance in the same VPC
-4. Store all credentials in Secrets Manager and reference them as environment variables in Amplify
-5. Point your internal domain (e.g. `analytics.yourcompany.com`) to the Amplify URL via Route 53
+**Deployment flow:**
+```
+git push → GitHub Actions CI (test + lint + build)
+         → Docker image built + pushed to ECR
+         → Terraform plan reviewed (infra changes only)
+         → kubectl rolling update on EKS staging
+         → Smoke tests pass → manual approval
+         → kubectl rolling update on EKS production
+```
 
 ### Environment Variables
 
