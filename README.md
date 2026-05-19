@@ -380,7 +380,34 @@ PR merged  →  Deploy to staging (EKS staging namespace)
 - Add a `/api/health` endpoint that checks database connectivity and returns a 200/503 — required for load balancer health checks on AWS
 - Alert on Genie API error rate spikes or elevated latency
 
-### 8. Rate Limiting and Abuse Prevention
+### 8. Weekly Digest Agent — Production Enhancements
+
+**Scheduled Delivery**
+
+The digest currently requires a user to click a button. In production it should run automatically on a schedule and push results directly to the team — no portal visit required.
+
+- Run the agent as a cron job every Monday at 8am per department
+- Deliver the digest to the relevant Slack channel (e.g. `#data-weekly`, `#cs-weekly`) via Slack Incoming Webhooks
+- Include a deep link back to the department page in the hub so recipients can explore further
+- Log each scheduled run to the database so the hub can show "Last digest: Monday 8am"
+
+**Agent Memory**
+
+The agent currently reports absolute numbers with no sense of trend. With memory of past digests it can reason across time — turning a report into something that thinks like an analyst.
+
+- Persist each digest to the database with a timestamp and department
+- On the next run, pass the previous digest as context so the agent can compare: *"Refund rate is up 0.4% vs last week — worth watching"* instead of just *"Refund rate is 1.8%"*
+- Surface week-over-week deltas and flag sustained trends that span multiple digests
+
+**Expanding Agent Tool Set**
+
+The agent is only as useful as the data it can reach. As the rest of the platform matures, the agent's tools should grow with it automatically — no redesign needed.
+
+- Once Databricks Genie is connected, add a `query_genie` tool so the agent can answer questions against the full data warehouse, not just the SQLite demo tables
+- Once Looker dashboard sync is live, add a `get_relevant_dashboards` tool so the digest can link directly to the dashboards most relevant to what it found
+- Add a `get_open_incidents` tool that checks PagerDuty or a similar on-call system so the digest can flag active incidents affecting the department's data
+
+### 9. Rate Limiting and Abuse Prevention
 
 - Add per-user rate limiting on `POST /api/genie` (e.g. 30 requests per minute) using an in-memory store or Redis
 - Reject questions above a token budget to prevent runaway LLM costs
