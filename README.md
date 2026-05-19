@@ -151,23 +151,121 @@ data/
 
 ---
 
+## Roadmap
+
+This repository is a working prototype. The sections below describe the intended path from demo to production-grade internal tool.
+
+### 1. Replace Claude Text-to-SQL with Databricks Genie
+
+The current AI search uses Claude to generate SQL against a local SQLite database. In production, this layer should be replaced with **Databricks Genie**, which connects directly to your existing data warehouse and understands your actual schemas, table names, and business logic out of the box.
+
+- Wire `POST /api/genie` to the [Databricks Genie API](https://docs.databricks.com/en/genie/index.html)
+- Genie handles query generation, execution, and result formatting natively
+- The UI and route contract stay the same — only the backend implementation changes
+- Fallback to the Claude Text-to-SQL layer can be kept for tables not yet in Databricks
+
+### 2. Real Looker Dashboard Sync
+
+Dashboard cards currently show mock URLs. In production, the dashboard list should be populated automatically from Looker so that new dashboards appear in the portal the moment they are published — with no manual updates required.
+
+- Use the [Looker API](https://developers.looker.com/api/explorer) (`/lookml_models`, `/dashboards`) to fetch all published dashboards and their metadata
+- Run a sync job (cron or webhook) that writes dashboard records to the production database whenever a Looker dashboard is created, updated, or archived
+- Store `looker_id`, `title`, `description`, `folder`, `owner`, and `last_updated` per dashboard
+- Map Looker folders or tags to hub departments automatically
+
+### 3. Authentication and Authorization with Okta
+
+The portal should only be accessible to authenticated employees, with access to certain dashboards restricted by department or role.
+
+- Integrate **Okta OIDC** using [NextAuth.js](https://next-auth.js.org/) with the Okta provider
+- Protect all routes with a session middleware check
+- Map Okta groups to hub departments — a Legal employee sees Legal dashboards but cannot browse Platform internals
+- Pass the authenticated user's identity to the Genie API so query audit logs are tied to real users
+- Display the user's real name and avatar in the navbar instead of the hardcoded initials
+
+### 4. Production Database
+
+SQLite is used for local development and demos only. It does not support concurrent writes and cannot persist across serverless function invocations.
+
+- Migrate to **PostgreSQL** — [Neon](https://neon.tech) (serverless, free tier) or **AWS RDS** if staying within AWS
+- Run database migrations with [Drizzle ORM](https://orm.drizzle.team/) or [Prisma](https://www.prisma.io/)
+- Store dashboard sync records, Genie query history, metrics definitions, and user bookmarks in Postgres
+
+### 5. Query History and Shared Answers
+
+The "Recent answers" feed is currently static mock data. In production it should be a live log.
+
+- Persist every Genie query and its answer to the database with a timestamp and user ID
+- Let users upvote or bookmark answers that were useful
+- Surface the most-asked questions on the home page to reduce repeat queries across the org
+- Add a "Share this answer" link that generates a permalink
+
+### 6. CI/CD Pipeline
+
+- Add a **GitHub Actions** workflow that runs `npm run test` and `npm run build` on every pull request
+- Block merges if tests fail or the build breaks
+- On merge to `main`, auto-deploy to Vercel or AWS Amplify
+- Store secrets (`ANTHROPIC_API_KEY`, database credentials, Okta client secret) in **AWS Secrets Manager** or Vercel's encrypted environment variables — never in the repo
+
+### 7. Observability and Monitoring
+
+- Integrate **Sentry** for frontend and API error tracking
+- Log all Genie queries (question, generated SQL, latency, user) to a structured logging service (Datadog, CloudWatch, or Grafana Loki)
+- Add a `/api/health` endpoint that checks database connectivity and returns a 200/503 — required for load balancer health checks on AWS
+- Alert on Genie API error rate spikes or elevated latency
+
+### 8. Rate Limiting and Abuse Prevention
+
+- Add per-user rate limiting on `POST /api/genie` (e.g. 30 requests per minute) using an in-memory store or Redis
+- Reject questions above a token budget to prevent runaway LLM costs
+- Log and alert on unusual query patterns
+
+---
+
 ## Deployment
 
-### Vercel (recommended)
+### Vercel (recommended for getting started)
 
 1. Push to GitHub
 2. Connect the repo at [vercel.com/new](https://vercel.com/new)
-3. Add `ANTHROPIC_API_KEY` as an environment variable in the Vercel dashboard
+3. Add environment variables in the Vercel dashboard (see table below)
 4. Deploy
 
-> **Note:** SQLite is a local file and does not persist on Vercel's serverless functions. For production, replace the SQLite layer with [Neon](https://neon.tech) (free serverless Postgres) or [Supabase](https://supabase.com).
+> **Note:** Replace SQLite with Neon or Supabase before going to production — SQLite does not persist across Vercel serverless invocations.
 
-### AWS Amplify
+### AWS (recommended for production)
 
-1. Connect your GitHub repo in the Amplify Console
-2. Amplify auto-detects Next.js — no configuration needed
-3. Add `ANTHROPIC_API_KEY` under App settings → Environment variables
-4. Deploy
+| Service | Purpose |
+|---|---|
+| **AWS Amplify** | Hosts the Next.js app with SSR support, auto-deploys from GitHub |
+| **AWS RDS (Postgres)** | Production database — replaces SQLite |
+| **AWS Secrets Manager** | Stores API keys and DB credentials securely |
+| **AWS CloudFront** | CDN in front of Amplify for static assets and edge caching |
+| **AWS CloudWatch** | Logs and alerting for API errors and latency |
+| **AWS WAF** | Web application firewall to block malicious traffic |
+
+**Setup steps for AWS:**
+1. Create an Amplify app and connect to this GitHub repo
+2. Amplify auto-detects Next.js — no Dockerfile needed
+3. Provision an RDS Postgres instance in the same VPC
+4. Store all credentials in Secrets Manager and reference them as environment variables in Amplify
+5. Point your internal domain (e.g. `analytics.yourcompany.com`) to the Amplify URL via Route 53
+
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes (current) | Anthropic API key for Claude Text-to-SQL |
+| `DATABASE_URL` | Production | Postgres connection string — replaces SQLite |
+| `DATABRICKS_HOST` | Future | Databricks workspace URL for Genie integration |
+| `DATABRICKS_TOKEN` | Future | Databricks personal access token |
+| `LOOKER_CLIENT_ID` | Future | Looker API client ID for dashboard sync |
+| `LOOKER_CLIENT_SECRET` | Future | Looker API client secret |
+| `OKTA_CLIENT_ID` | Future | Okta OIDC client ID for authentication |
+| `OKTA_CLIENT_SECRET` | Future | Okta OIDC client secret |
+| `OKTA_ISSUER` | Future | Okta issuer URL (e.g. `https://yourorg.okta.com`) |
+| `NEXTAUTH_SECRET` | Future | Random secret for NextAuth.js session signing |
+| `NEXTAUTH_URL` | Future | Public URL of the deployed app |
 
 ---
 
@@ -182,12 +280,3 @@ The test suite covers:
 - **Mock data integrity** — all 6 departments, 39 dashboards, 10 metrics have required fields and consistent counts
 - **Genie API** — input validation, response shape, SQL injection guard, SELECT-only enforcement
 - **Components** — DepartmentCard and MetricsSection render correctly with real data
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Your Anthropic API key for Claude |
-
