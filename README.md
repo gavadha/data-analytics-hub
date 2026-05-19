@@ -10,6 +10,16 @@ Built with Next.js, Claude AI (Text-to-SQL), and SQLite.
 
 ---
 
+## Screenshots
+
+**Home — AI search, department browser, metrics, recent answers**
+![Data Analytics Hub home page](public/screenshot.png)
+
+**Department drill-down — browse all Looker dashboards for a team**
+![Department dashboard list](public/screenshot-department.png)
+
+---
+
 ## Features
 
 - **AI Search** — Ask questions in plain English. Claude generates SQL, runs it against the database, and returns a natural language answer.
